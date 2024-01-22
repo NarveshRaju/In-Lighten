@@ -1,0 +1,155 @@
+/*************************************************************
+  WARNING!
+    It's very tricky to get it working. Please read this article:
+    http://help.blynk.cc/hardware-and-libraries/arduino/esp8266-with-at-firmware
+
+  You’ll need:
+   - Blynk IoT app (download from App Store or Google Play)
+   - Arduino Uno board
+   - Decide how to connect to Blynk
+     (USB, Ethernet, Wi-Fi, Bluetooth, ...)
+
+  There is a bunch of great example sketches included to show you how to get
+  started. Think of them as LEGO bricks  and combine them as you wish.
+  For example, take the Ethernet Shield sketch and combine it with the
+  Servo example, or choose a USB sketch and add a code from SendData
+  example.
+ *************************************************************/
+
+/* Fill-in information from Blynk Device Info here */
+#define BLYNK_TEMPLATE_ID           "TMPL30mJpATid"
+#define BLYNK_TEMPLATE_NAME         "Alpha"
+#define BLYNK_AUTH_TOKEN            "zbQ1fYCSIbBjneat_g6TwS_P9FnuIO6V"
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+/* Comment this out to disable prints and save space */
+#define BLYNK_PRINT Serial
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+#define TRIGGER_S1 12
+#define ECHO_S1 11
+#define TRIGGER_S2 4
+#define ECHO_S2 5
+#define RELAY_PIN 8
+#include <ESP8266_Lib.h>
+#include <BlynkSimpleShieldEsp8266.h>
+
+// Your WiFi credentials.
+// Set password to "" for open networks.
+char ssid[] = "Pixel7";
+char pass[] = "1234567a";
+
+// Hardware Serial on Mega, Leonardo, Micro...
+//#define EspSerial Serial1
+
+// or Software Serial on Uno, Nano...
+#include <SoftwareSerial.h>
+SoftwareSerial EspSerial(2, 3); // RX, TX
+
+// Your ESP8266 baud rate:
+#define ESP8266_BAUD 115200
+
+ESP8266 wifi(&EspSerial);
+long dis_a = 0, dis_b = 0;
+int person = 0;
+void setup()
+{
+  // Debug console
+  Serial.begin(115200);
+
+  // Set ESP8266 baud rate
+  EspSerial.begin(ESP8266_BAUD);
+  delay(10);
+
+  //Blynk.begin(BLYNK_AUTH_TOKEN, wifi, ssid, pass);
+  // You can also specify server:
+  Blynk.begin(BLYNK_AUTH_TOKEN, wifi, ssid, pass, "blynk.cloud", 80);
+  //Blynk.begin(BLYNK_AUTH_TOKEN, wifi, ssid, pass, IPAddress(192,168,1,100), 8080);
+  Serial.begin(9600);
+  pinMode(TRIGGER_S1, OUTPUT);
+  pinMode(ECHO_S1, INPUT);
+  pinMode(TRIGGER_S2, OUTPUT);
+  pinMode(ECHO_S2, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print(" GREETINGS FROM    ");
+  lcd.setCursor(0, 1);
+  lcd.print(" EN-LIGHTEN     ");
+  delay(2000);
+  lcd.clear();
+}
+void ultra_read(int triggerPin, int echoPin, long &distance) {
+  digitalWrite(triggerPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(triggerPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(triggerPin, LOW);
+  distance = pulseIn(echoPin, HIGH) / 29 / 2;
+}
+
+void updateSensors() {
+  ultra_read(TRIGGER_S1, ECHO_S1, dis_a);
+  delay(30);
+  ultra_read(TRIGGER_S2, ECHO_S2, dis_b);
+  delay(30);
+ Serial.print("da:");Serial.println(dis_a);
+ Serial.print("db:");Serial.println(dis_b);   
+}
+
+void displayPersonCount() {
+  lcd.setCursor(0, 0);
+  lcd.print("People: ");
+  lcd.print(person);
+}
+
+void controlLight() {
+  lcd.setCursor(0, 1);
+  lcd.print("Light: ");
+
+  if (person > 0) {
+    digitalWrite(RELAY_PIN, LOW); // Turn on the light
+    lcd.print("On ");
+  } else {
+    digitalWrite(RELAY_PIN, HIGH); // Turn off the light
+    lcd.print("Off");
+  }
+}
+unsigned long previousDetectionMillis = 0;
+const long detectionDelay = 2000;  // 2 seconds delay after detection
+
+void loop() {
+  Blynk.run();
+  updateSensors();
+  controlLight();
+  displayPersonCount();
+
+  unsigned long currentMillis = millis();
+
+  if (dis_a < 40 && dis_b >= 40) {
+    if (currentMillis - previousDetectionMillis >= detectionDelay) {
+      person++;
+      displayPersonCount();
+      controlLight();
+      previousDetectionMillis = currentMillis;
+
+      // Send person count to virtual pin 0
+      Blynk.virtualWrite(V0, person);
+    }
+  } else if (dis_b < 40 && dis_a >= 40) {
+    if (person > 0 && currentMillis - previousDetectionMillis >= detectionDelay) {
+      person--;
+      displayPersonCount();
+      controlLight();
+      previousDetectionMillis = currentMillis;
+
+      // Send person count to virtual pin 0
+      Blynk.virtualWrite(V0, person);
+    }
+  }
+
+  // Other non-blocking tasks can be added here
+}
